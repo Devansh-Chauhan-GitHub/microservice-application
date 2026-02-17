@@ -1,21 +1,25 @@
-# Microservice Ecosystem: DevOps Documentation
+# Microservice Application Ecosystem
 
-This repository contains a container-ready, microservice-based ecosystem comprising five Spring Boot backend services and an Angular standalone frontend.
+A modern, production-ready microservice architecture built with **Spring Boot 4**, **Angular 21**, and **PostgreSQL**. This project demonstrates a complete end-to-end ecosystem with centralized authentication, service isolation, and automated containerized deployment.
 
-## System Architecture
+---
+
+## 🏗️ System Architecture
+
+The application follows a distributed architecture where each service owns its domain and database, adhering to the **Database-per-Service** pattern.
 
 ```mermaid
 graph TD
     subgraph "Frontend Layer"
-        Angular["Angular Frontend (Port 4200)"]
+        Angular["Angular 21 Frontend<br/>(Port 80/4200)"]
     end
 
-    subgraph "API Layer"
-        AuthS["Auth Service (Port 8081)"]
-        UserS["User Service (Port 8082)"]
-        OrderS["Order Service (Port 8083)"]
-        PayS["Payment Service (Port 8084)"]
-        NoteS["Notification Service (Port 8085)"]
+    subgraph "Service Layer"
+        AuthS["Auth Service<br/>(Port 8081)"]
+        UserS["User Service<br/>(Port 8082)"]
+        OrderS["Order Service<br/>(Port 8083)"]
+        PayS["Payment Service<br/>(Port 8084)"]
+        NoteS["Notification Service<br/>(Port 8085)"]
     end
 
     subgraph "Persistence Layer (PostgreSQL)"
@@ -26,11 +30,11 @@ graph TD
         DB5[(notification_db)]
     end
 
-    Angular -->|JWT Auth| AuthS
-    Angular -->|JWT Auth| UserS
-    Angular -->|JWT Auth| OrderS
-    Angular -->|JWT Auth| PayS
-    Angular -->|JWT Auth| NoteS
+    Angular -->|REST API + JWT| AuthS
+    Angular -->|REST API + JWT| UserS
+    Angular -->|REST API + JWT| OrderS
+    Angular -->|REST API + JWT| PayS
+    Angular -->|REST API + JWT| NoteS
 
     AuthS --> DB1
     UserS --> DB2
@@ -39,78 +43,99 @@ graph TD
     NoteS --> DB5
 ```
 
-## Service Catalog
+---
 
-| Service | Port | Database | Primary Responsibility |
-| :--- | :--- | :--- | :--- |
-| **Auth** | 8081 | `auth_db` | Identity Management, JWT Generation, BCrypt Hashing |
-| **User** | 8082 | `user_db` | User Profiles, Dashboard Context |
-| **Order** | 8083 | `order_db` | Transactional Orders, Status Management |
-| **Payment**| 8084 | `payment_db` | simulated Payment Processing |
-| **Notification**| 8085| `notification_db`| Event Logging, Notification Dispatch |
+## 🛠️ Technology Stack
 
-## Infrastructure Requirements
+| Layer | Technologies |
+| :--- | :--- |
+| **Backend** | Java 17, Spring Boot 4.0.2, Spring Security, Spring Data JPA, Hibernate |
+| **Frontend** | Angular 21, TypeScript, Vanilla CSS, RXJS |
+| **Database** | PostgreSQL 15 |
+| **Security** | JSON Web Tokens (JWT), BCrypt Password Hashing |
+| **DevOps** | Docker, Docker Compose, Nginx, Multi-stage Builds |
+| **Build Tools** | Maven, NPM |
 
-### PostgreSQL Setup
-The application expects a PostgreSQL instance running on `localhost:5432`.
-- **User**: `microuser`
-- **Password**: `micropass`
-- **Databases required**: `auth_db`, `user_db`, `order_db`, `payment_db`, `notification_db`.
+---
 
-## Security Implementation
+## 📦 Service Breakdown
 
-### 1. Authentication (JWT)
-The system uses stateless JWT authentication.
-- **Auth Service**: Generates tokens containing `userId`, `email`, and `name`.
-- **Microservices**: Validate tokens using a shared secret key and extract identity claims.
-- **Frontend**: Uses an `HttpInterceptor` to automatically attach the `Authorization: Bearer <token>` header to all outgoing requests.
+### 1. Auth Service (Identity Provider)
+- **Role**: Manages user accounts and issues security tokens.
+- **Key Features**:
+    - Patient Signup/Login with BCrypt password encryption.
+    - JWT Generation containing user identity (`userId`, `email`, `name`).
+    - CORS configuration for frontend integration.
+- **Key Files**: `JwtUtil.java`, `AuthService.java`, `AuthController.java`.
 
-### 2. Password Hashing
-All user passwords in the `users` table are hashed using **BCrypt** with a salt (standard industry practice). Plain-text passwords are never stored.
+### 2. User Service (Profile Management)
+- **Role**: Manages user-specific metadata and dashboard context.
+- **Key Features**:
+    - Extracts identity from JWT via `JwtAuthFilter`.
+    - Auto-creates default profiles on first login.
+- **Key Files**: `JwtAuthFilter.java`, `UserController.java`, `UserProfile.java`.
 
-### 3. CORS
-Backend services are configured to allow cross-origin requests from `http://localhost:4200`.
+### 3. Order Service (Transactions)
+- **Role**: Core business logic for creating and tracking orders.
+- **Key Features**: RESTful CRUD operations for order management.
+- **Key Files**: `OrderController.java`, `OrderRepository.java`.
 
-## Operational Commands
+### 4. Payment Service (Billing)
+- **Role**: Handles simulated payment transactions.
+- **Key Features**: Integrates with the order flow to record payment statuses.
+- **Key Files**: `PaymentController.java`, `Payment.java`.
 
-### Automated Startup (Docker - RECOMMENDED)
-To launch the entire ecosystem using Docker Compose:
+### 5. Notification Service (Communication)
+- **Role**: Centralized hub for system notifications.
+- **Key Features**:
+    - **Real Email Integration**: Uses `spring-boot-starter-mail` to attempt actual email delivery.
+    - Audit logging of all notification events.
+- **Key Files**: `EmailService.java`, `NotificationController.java`.
+
+---
+
+## 🔐 Technical Implementation Patterns
+
+### **Stateless Authentication (JWT)**
+The system uses a decentralized security model. The **Auth Service** generates a signed token. All other microservices contain a `JwtAuthFilter` that validates the token locally using a shared secret, preventing the need for frequent round-trips to the Auth service.
+
+### **Database Isolation**
+Each service connects to its own dedicated PostgreSQL database. In a Docker environment, the `init-db.sql` script ensures all 5 databases and the application user are created automatically upon the first startup.
+
+### **Optimized Docker Images**
+All Dockerfiles use **multi-stage builds**:
+1.  **Stage 1 (Build)**: Compiles code and generates JAR/Build artifacts (Maven/Node).
+2.  **Stage 2 (Run)**: Copies only the required artifacts into a minimal JRE/Nginx image, reducing the attack surface and image size.
+
+---
+
+## 🚀 Getting Started
+
+### Option A: Docker (Recommended)
+Launch the entire system (Frontend + 5 Backends + Database) with one command:
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
-This will start:
-- PostgreSQL with all databases initialized.
-- All 5 Spring Boot backend services.
-- The Angular frontend (accessible at http://localhost:80).
+- **Web App**: http://localhost
+- **API Endpoints**: http://localhost:8081 through :8085
 
-### Automated Startup (Local)
-To launch the entire ecosystem locally (checking DBs, starting all 6 components):
+### Option B: Local Development
+Ensure PostgreSQL is running on `5432` with user `microuser`, then run:
 ```bash
 ./start-all.sh
 ```
 
-### Manual Service Control
-Individual services can be managed using the Maven Wrapper (`./mvnw`) within their respective directories:
-```bash
-# Example: Restarting Order Service
-cd order-service
-./mvnw spring-boot:run
-```
+---
 
-### Stopping a Specific Service
-To stop a service by its port (e.g., port 8083):
-```bash
-lsof -t -i :8083 | xargs kill -9
-```
+## 📈 Monitoring & Logs
+- **Docker Logs**: `docker compose logs -f`
+- **Local Logs**: Check the `logs/` directory in the project root.
+- **Health Checks**: Each backend service exposes health endpoints (e.g., `GET /auth/health`).
 
-### Monitoring Logs
-Logs are directed to a centralized `logs/` directory:
-```bash
-tail -f logs/startup.log
-tail -f logs/order-service.log
-```
+---
 
-## DevOps Notes
-- **Scalability**: Each service is stateless and can be scaled horizontally.
-- **Data Isolation**: Each microservice strictly owns its own database schema.
-- **Integration**: The frontend uses `localStorage` for session persistence.
+## 📝 Configuration & Environment Variables
+Key configurations are managed via `application.properties` or environment variables in `docker-compose.yml`:
+- `SPRING_DATASOURCE_URL`: Database connection string.
+- `JWT_SECRET`: Secret key for signing tokens.
+- `SPRING_MAIL_HOST`: SMTP server for notifications.
