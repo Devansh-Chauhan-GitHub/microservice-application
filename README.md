@@ -73,8 +73,18 @@ Backend services are configured to allow cross-origin requests from `http://loca
 
 ## Operational Commands
 
-### Automated Startup
-To launch the entire ecosystem (checking DBs, starting all 6 components):
+### Automated Startup (Docker - RECOMMENDED)
+To launch the entire ecosystem using Docker Compose:
+```bash
+docker-compose up --build
+```
+This will start:
+- PostgreSQL with all databases initialized.
+- All 5 Spring Boot backend services.
+- The Angular frontend (accessible at http://localhost:80).
+
+### Automated Startup (Local)
+To launch the entire ecosystem locally (checking DBs, starting all 6 components):
 ```bash
 ./start-all.sh
 ```
