@@ -1,0 +1,28 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Frontend / Node
+node_modules/
+dist/
+.angular/
+.npm/
+
+# Logs and OS
+logs/
+*.log
+.DS_Store
+
+# Spring Boot
+.help.md
