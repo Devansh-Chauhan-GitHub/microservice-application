@@ -1,28 +1,49 @@
-# Microservice Application Ecosystem
+# 🏥 Microservice Application Ecosystem: Technical Manual
 
-A modern, production-ready microservice architecture built with **Spring Boot 4**, **Angular 21**, and **PostgreSQL**. This project demonstrates a complete end-to-end ecosystem with centralized authentication, service isolation, and automated containerized deployment.
+A high-performance, distributed ecosystem built with **Spring Boot 4**, **Angular 21**, and **PostgreSQL**. This documentation provides a 360-degree view of the system's architecture, data models, security protocols, and deployment strategies.
+
+---
+
+## 📑 Table of Contents
+1. [System Architecture](#system-architecture)
+2. [Communication Flow](#communication-flow)
+3. [Service Deep-Dive](#service-deep-dive)
+    - [Auth Service](#1-auth-service-port-8081)
+    - [User Service](#2-user-service-port-8082)
+    - [Order Service](#3-order-service-port-8083)
+    - [Payment Service](#4-payment-service-port-8084)
+    - [Notification Service](#5-notification-service-port-8085)
+4. [Authentication & Security](#authentication--security)
+5. [Database Schemas](#database-schemas)
+6. [Frontend Application](#frontend-application)
+7. [Deployment & DevOps](#deployment--devops)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## 🏗️ System Architecture
 
-The application follows a distributed architecture where each service owns its domain and database, adhering to the **Database-per-Service** pattern.
+The system utilizes a **Microservices Architecture** with a **Shared Identity Provider** and **Database-per-Service** isolation.
 
 ```mermaid
 graph TD
     subgraph "Frontend Layer"
-        Angular["Angular 21 Frontend<br/>(Port 80/4200)"]
+        Angular["Angular 21 SPA<br/>(Nginx / Port 80)"]
     end
 
-    subgraph "Service Layer"
-        AuthS["Auth Service<br/>(Port 8081)"]
-        UserS["User Service<br/>(Port 8082)"]
-        OrderS["Order Service<br/>(Port 8083)"]
-        PayS["Payment Service<br/>(Port 8084)"]
-        NoteS["Notification Service<br/>(Port 8085)"]
+    subgraph "Security Layer"
+        JWT["Stateless JWT Verification<br/>(Shared Secret)"]
     end
 
-    subgraph "Persistence Layer (PostgreSQL)"
+    subgraph "Microservices Layer"
+        AuthS["Auth Service<br/>(IAM / Port 8081)"]
+        UserS["User Service<br/>(Profiles / Port 8082)"]
+        OrderS["Order Service<br/>(Orders / Port 8083)"]
+        PayS["Payment Service<br/>(Billing / Port 8084)"]
+        NoteS["Notification Service<br/>(Mail / Port 8085)"]
+    end
+
+    subgraph "Data Persistence"
         DB1[(auth_db)]
         DB2[(user_db)]
         DB3[(order_db)]
@@ -30,11 +51,17 @@ graph TD
         DB5[(notification_db)]
     end
 
-    Angular -->|REST API + JWT| AuthS
-    Angular -->|REST API + JWT| UserS
-    Angular -->|REST API + JWT| OrderS
-    Angular -->|REST API + JWT| PayS
-    Angular -->|REST API + JWT| NoteS
+    Angular -->|HTTPS + JWT| AuthS
+    Angular -->|HTTPS + JWT| UserS
+    Angular -->|HTTPS + JWT| OrderS
+    Angular -->|HTTPS + JWT| PayS
+    Angular -->|HTTPS + JWT| NoteS
+
+    AuthS --- JWT
+    UserS --- JWT
+    OrderS --- JWT
+    PayS --- JWT
+    NoteS --- JWT
 
     AuthS --> DB1
     UserS --> DB2
@@ -45,97 +72,147 @@ graph TD
 
 ---
 
-## 🛠️ Technology Stack
+## � Communication Flow
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Backend** | Java 17, Spring Boot 4.0.2, Spring Security, Spring Data JPA, Hibernate |
-| **Frontend** | Angular 21, TypeScript, Vanilla CSS, RXJS |
-| **Database** | PostgreSQL 15 |
-| **Security** | JSON Web Tokens (JWT), BCrypt Password Hashing |
-| **DevOps** | Docker, Docker Compose, Nginx, Multi-stage Builds |
-| **Build Tools** | Maven, NPM |
+Below is the standard sequence for a user journey from **Signup** to **Order Notification**.
 
----
+```mermaid
+sequenceDiagram
+    participant U as User (UI)
+    participant A as Auth Service
+    participant P as User Profile
+    participant O as Order Service
+    participant N as Notification Service
 
-## 📦 Service Breakdown
-
-### 1. Auth Service (Identity Provider)
-- **Role**: Manages user accounts and issues security tokens.
-- **Key Features**:
-    - Patient Signup/Login with BCrypt password encryption.
-    - JWT Generation containing user identity (`userId`, `email`, `name`).
-    - CORS configuration for frontend integration.
-- **Key Files**: `JwtUtil.java`, `AuthService.java`, `AuthController.java`.
-
-### 2. User Service (Profile Management)
-- **Role**: Manages user-specific metadata and dashboard context.
-- **Key Features**:
-    - Extracts identity from JWT via `JwtAuthFilter`.
-    - Auto-creates default profiles on first login.
-- **Key Files**: `JwtAuthFilter.java`, `UserController.java`, `UserProfile.java`.
-
-### 3. Order Service (Transactions)
-- **Role**: Core business logic for creating and tracking orders.
-- **Key Features**: RESTful CRUD operations for order management.
-- **Key Files**: `OrderController.java`, `OrderRepository.java`.
-
-### 4. Payment Service (Billing)
-- **Role**: Handles simulated payment transactions.
-- **Key Features**: Integrates with the order flow to record payment statuses.
-- **Key Files**: `PaymentController.java`, `Payment.java`.
-
-### 5. Notification Service (Communication)
-- **Role**: Centralized hub for system notifications.
-- **Key Features**:
-    - **Real Email Integration**: Uses `spring-boot-starter-mail` to attempt actual email delivery.
-    - Audit logging of all notification events.
-- **Key Files**: `EmailService.java`, `NotificationController.java`.
+    U->>A: POST /auth/signup (Email, Pass, Name)
+    A->>A: Hash Password (BCrypt)
+    A-->>U: Return JWT Token
+    U->>P: GET /users/me (Bearer Token)
+    P->>P: Validate JWT & Extract Identity
+    P-->>U: Return Profile Data
+    U->>O: POST /orders (Item, Qty)
+    O-->>U: Order Created (PENDING)
+    U->>N: POST /notifications (Type: email)
+    N->>N: EmailService.send(recipient, msg)
+    N-->>U: Status: SENT/FAILED
+```
 
 ---
 
-## 🔐 Technical Implementation Patterns
+## 📦 Service Deep-Dive
 
-### **Stateless Authentication (JWT)**
-The system uses a decentralized security model. The **Auth Service** generates a signed token. All other microservices contain a `JwtAuthFilter` that validates the token locally using a shared secret, preventing the need for frequent round-trips to the Auth service.
+### 1. Auth Service (Port 8081)
+The Identity Provider (IdP) for the entire system.
+- **Endpoints**:
+    - `POST /auth/signup`: Creates a new user.
+    - `POST /auth/login`: Validates credentials and returns a JWT.
+- **Security Logic**:
+    - Uses `BCryptPasswordEncoder` for cryptographic hashing.
+    - Generates HS256 JWTs with `userId`, `email`, and `userDisplayName` claims.
+- **Table**: `users` (id, email, password, name, created_at).
 
-### **Database Isolation**
-Each service connects to its own dedicated PostgreSQL database. In a Docker environment, the `init-db.sql` script ensures all 5 databases and the application user are created automatically upon the first startup.
+### 2. User Service (Port 8082)
+Manages the extended user profile and dashboard context.
+- **Endpoints**:
+    - `GET /users/me`: Fetches the current user's profile.
+    - `PUT /users/update`: Updates profile details (phone, address).
+- **Core Feature**: The `JwtAuthFilter` extracts security context from every request, meaning the service does not store passwords—it only trust verified JWTs.
+- **Table**: `user_profiles` (id, userId, email, name, phone, address).
 
-### **Optimized Docker Images**
-All Dockerfiles use **multi-stage builds**:
-1.  **Stage 1 (Build)**: Compiles code and generates JAR/Build artifacts (Maven/Node).
-2.  **Stage 2 (Run)**: Copies only the required artifacts into a minimal JRE/Nginx image, reducing the attack surface and image size.
+### 3. Order Service (Port 8083)
+Coordinates transactional state for items.
+- **Endpoints**:
+    - `GET /orders`: List user's orders.
+    - `POST /orders`: Create new order.
+- **Logic**: Implements a simple transactional model where orders transition from `PENDING` to `COMPLETED`.
+- **Table**: `orders` (id, userId, item, quantity, total_price, status, created_at).
+
+### 4. Payment Service (Port 8084)
+Records and processes simulated billing cycles.
+- **Endpoints**:
+    - `POST /payments`: Record a payment event.
+    - `GET /payments/{orderId}`: Query payment history for an order.
+- **Logic**: Supports multiple methods (Credit Card, PayPal).
+- **Table**: `payments` (id, userId, orderId, amount, status, method, created_at).
+
+### 5. Notification Service (Port 8085)
+The communication bridge of the ecosystem.
+- **Endpoints**:
+    - `POST /notifications`: Triggers a message dispatch.
+- **Intelligence**: Integrated with **Spring Boot Starter Mail**. It reads SMTP properties and attempts to connect to a real mail server (e.g., Gmail, Outlook) to deliver messages.
+- **Table**: `notifications` (id, userId, type, recipient, message, status).
 
 ---
 
-## 🚀 Getting Started
+## 🔐 Authentication & Security
 
-### Option A: Docker (Recommended)
-Launch the entire system (Frontend + 5 Backends + Database) with one command:
+### **The JWT Backbone**
+The system uses **Stateful Creation but Stateless Validation**:
+1.  **Creation**: Auth Service signs the token using a secret key.
+2.  **Propagation**: The Frontend stores the token in `localStorage`.
+3.  **Validation**: Every microservice owns a copy of the **Secret Key**. When a request arrives, the service re-verifies the digital signature locally. If valid, the user's ID is extracted and put into the `SecurityContext`.
+
+### **Intercepting Requests**
+The Frontend uses an `AuthInterceptor` (Angular) to intercept every HTTP call and inject the `Authorization: Bearer <token>` header, ensuring the user never has to re-login within a session.
+
+---
+
+## 🗄️ Database Schemas
+
+Each database is managed by the service's JPA/Hibernate layer.
+
+| Service | Table | Primary Key | Critical Fields |
+| :--- | :--- | :--- | :--- |
+| **Auth** | `users` | `Long id` | `email` (unique), `password` (hashed) |
+| **User** | `user_profiles`| `Long id` | `userId` (FK match), `email` |
+| **Order** | `orders` | `Long id` | `status`, `userId` |
+| **Payment**| `payments` | `Long id` | `orderId`, `status` |
+| **Note** | `notifications`| `Long id` | `recipient`, `status` |
+
+---
+
+## 🌐 Frontend Application
+
+Built with **Angular 21**, the frontend uses modern **standalone components** (no NgModules).
+
+- **Routing**: Optimized using provideRouter with guards.
+- **Reactive State**: Uses `HttpClient` with Observables to manage real-time UI updates.
+- **Components**:
+    - `LoginComponent`: Handles authentication.
+    - `SignupComponent`: Handles registration.
+    - `DashboardComponent`: A central control center that talks to all 5 services simultaneously.
+
+---
+
+## 🚀 Deployment & DevOps
+
+### **Docker Orchestration (Highly Recommended)**
+The ecosystem is optimized for Docker. Our `docker-compose.yml` includes:
+- **Database Auto-Init**: Uses `init-db.sql` to build all 5 databases on first run.
+- **HealthChecks**: The microservices will "wait" for the Database to be healthy before starting.
+- **Nginx**: Static frontend files are served via Nginx for lightning-fast performance.
+
+**Run All:**
 ```bash
 docker compose up --build
 ```
-- **Web App**: http://localhost
-- **API Endpoints**: http://localhost:8081 through :8085
 
-### Option B: Local Development
-Ensure PostgreSQL is running on `5432` with user `microuser`, then run:
-```bash
-./start-all.sh
-```
+### **Multi-Stage Build Process**
+To keep things lightweight, we use a 2-stage Docker process:
+1.  **Build Stage**: Maven/Node environment to compile code.
+2.  **Runtime Stage**: Minimalist Alpine Linux with only JRE 17 or Nginx installed. (Size reduction: ~70%).
 
 ---
 
-## 📈 Monitoring & Logs
-- **Docker Logs**: `docker compose logs -f`
-- **Local Logs**: Check the `logs/` directory in the project root.
-- **Health Checks**: Each backend service exposes health endpoints (e.g., `GET /auth/health`).
+## ☁️ VM Deployment
+For cloud deployment (AWS/GCP/Azure):
+1.  Clone the repo on your VM.
+2.  Ensure ports `80` (Frontend) and `8081-8085` (APIs) are open in your security groups.
+3.  Run `docker compose up -d`.
 
 ---
 
-## 📝 Configuration & Environment Variables
-Key configurations are managed via `application.properties` or environment variables in `docker-compose.yml`:
-- `SPRING_DATASOURCE_URL`: Database connection string.
-- `JWT_SECRET`: Secret key for signing tokens.
-- `SPRING_MAIL_HOST`: SMTP server for notifications.
+## 🛠️ Troubleshooting
+- **Database Connection Refused**: Check if the `postgres` container is healthy using `docker compose ps`.
+- **401 Unauthorized**: Ensure your JWT token hasn't expired (default: 24h).
+- **Email Fails**: Update `application.properties` in `notification-service` with valid SMTP credentials.
